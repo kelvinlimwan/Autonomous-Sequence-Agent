@@ -163,7 +163,7 @@ class myAgent(Agent):
           there are no legal actions, which is the case at the
           terminal state, you should return a value of 0.0.
         '''
-        possibleActions = self.getPossibleActions(state, self.id)
+        possibleActions = self.getPossibleActions(state)
         if possibleActions:
             maxQ = float('-inf')
             for action in possibleActions:
