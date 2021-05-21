@@ -120,7 +120,7 @@ def run(options,valid_game,msg):
         results = {"succ":valid_game}
         for i in range(options.multipleGames):
             #Load each agent twice, for two teams of two.
-            agents,load_errs = loadAgent([options.red, options.blue, options.red, options.blue], 
+            agents,load_errs = loadAgent([options.red, options.blue, options.red, options.blue],
                                           agents_names, superQuiet=options.superQuiet)
             is_load_err = False
             for i,err in load_errs.items():
