@@ -56,7 +56,6 @@ class myAgent(Agent):
         return reward
 
     def select_child(self, node):
-        print('inside select_child')
         total_visits = sum(child.visits for child in node.children)
 
         best_score = -1
@@ -85,8 +84,11 @@ class MCTSNode(object):
         self.children = []  # children of each node
         self.visits = 0
         self.value = 0.00
+        print('before initialization of gamerule')
         self.game_rule = GameRule(4)
+        print('after initialization of gamerule')
         self.unvisited_moves = self.game_rule.getLegalActions(self.game_rule, self.game_state, agent)
+        print('after accessing getLegalActions of gamerule')
 
     def add_child(self, agent):
         index = random.randint(0, len(self.unvisited_moves) - 1) 
