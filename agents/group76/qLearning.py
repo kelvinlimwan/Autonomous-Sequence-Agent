@@ -64,8 +64,12 @@ class myAgent(Agent):
         bestActions = []
 
         for action in actions:
+            print("before reward")
             reward = self.getReward(game_state, action)
+            print("after reward")
+            print("before next state")
             nextState = self.getNextState(dc(game_state), action)
+            print("after next state")
             newQ = self.update(game_state, action, reward, nextState)
             if newQ != 0:
                 temp_dict[(game_state, action)] = newQ
@@ -159,7 +163,7 @@ class myAgent(Agent):
           there are no legal actions, which is the case at the
           terminal state, you should return a value of 0.0.
         '''
-        possibleActions = self.getLegalActions(state, self.id)
+        possibleActions = self.getPossibleActions(state, self.id)
         if possibleActions:
             maxQ = float('-inf')
             for action in possibleActions:

@@ -8,6 +8,3 @@ class myAgent(Agent):
     def SelectAction(self,actions,game_state):
         time.sleep(2)
         return actions[0]
-
-
-
