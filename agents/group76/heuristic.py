@@ -94,7 +94,7 @@ class myAgent(Agent):
         steps_to_complete.sort()
         step_to_win = steps_to_complete[0] + steps_to_complete[1]
 
-        num_complete_seq = sum([int(i==5) for i in steps_to_complete])
+        num_complete_seq = sum([int(i==0) for i in steps_to_complete])
         mean_step_to_complete = sum(steps_to_complete)/len(steps_to_complete)
 
         step_to_occupt_heart = self.to_occupy_heart(chips, opp_colour)
