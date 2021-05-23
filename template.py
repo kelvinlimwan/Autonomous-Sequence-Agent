@@ -63,6 +63,12 @@ class Agent(object):
     def SelectAction(self, actions, game_state):
         return random.choice(actions)
 
+    def update_model(self, current_game_state):
+        return
+
+    def save_net(self):
+        return
+
 
 class Displayer:
     def __init__(self):

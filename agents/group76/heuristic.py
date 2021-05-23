@@ -100,6 +100,8 @@ class myAgent(Agent):
         step_to_occupt_heart = self.to_occupy_heart(chips, opp_colour)
         if step_to_occupt_heart == None: # impossible to occupy heart
             return step_to_win + mean_step_to_complete - num_complete_seq
+        elif step_to_occupt_heart == 0:
+            return min(step_to_occupt_heart*0.667, step_to_win) + mean_step_to_complete - num_complete_seq - 3
         else:
             return min(step_to_occupt_heart*0.667, step_to_win) + mean_step_to_complete - num_complete_seq
  

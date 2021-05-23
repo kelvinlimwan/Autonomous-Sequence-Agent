@@ -91,36 +91,40 @@ class Game:
                         for attr in self.game_rule.private_information:
                             delattr(gs_copy.agents[i], attr)
             
+            # for debugging purpose
+            selected = agent.SelectAction(actions_copy, gs_copy)
+            #######################
+
             # Allow agent to select action within time limit. Any error will result in one warning.
-            try:
-                selected = func_timeout(self.time_limit,agent.SelectAction,args=(actions_copy, gs_copy))
+            # try:
+            #     selected = func_timeout(self.time_limit,agent.SelectAction,args=(actions_copy, gs_copy))
 
-            except AttributeError:
-                print("[AttributeError]: SelectAction() is not defined!")
-                print("Selecting random action instead!")
-                self.warnings[agent_index] += 1
-                selected = random.choice(actions_copy)
-                if self.displayer is not None:
-                    self.displayer.TimeOutWarning(self,agent_index)
-                self.warning_positions.append((agent_index,action_counter))
+            # except AttributeError:
+            #     print("[AttributeError]: SelectAction() is not defined!")
+            #     print("Selecting random action instead!")
+            #     self.warnings[agent_index] += 1
+            #     selected = random.choice(actions_copy)
+            #     if self.displayer is not None:
+            #         self.displayer.TimeOutWarning(self,agent_index)
+            #     self.warning_positions.append((agent_index,action_counter))
 
-            except FunctionTimedOut:
-                print("[TimeoutError] timeout when calling SelectAction()!")
-                print("Selecting random action instead!")
-                self.warnings[agent_index] += 1
-                selected = random.choice(actions_copy)
-                if self.displayer is not None:
-                    self.displayer.TimeOutWarning(self,agent_index)
-                self.warning_positions.append((agent_index,action_counter))
+            # except FunctionTimedOut:
+            #     print("[TimeoutError] timeout when calling SelectAction()!")
+            #     print("Selecting random action instead!")
+            #     self.warnings[agent_index] += 1
+            #     selected = random.choice(actions_copy)
+            #     if self.displayer is not None:
+            #         self.displayer.TimeOutWarning(self,agent_index)
+            #     self.warning_positions.append((agent_index,action_counter))
                 
-            except:
-                print("[OtherError] error occured when calling SelectAction()!")
-                print("Selecting random action instead!")
-                self.warnings[agent_index] += 1
-                selected = random.choice(actions_copy)
-                if self.displayer is not None:
-                    self.displayer.TimeOutWarning(self,agent_index)
-                self.warning_positions.append((agent_index,action_counter))
+            # except:
+            #     print("[OtherError] error occured when calling SelectAction()!")
+            #     print("Selecting random action instead!")
+            #     self.warnings[agent_index] += 1
+            #     selected = random.choice(actions_copy)
+            #     if self.displayer is not None:
+            #         self.displayer.TimeOutWarning(self,agent_index)
+            #     self.warning_positions.append((agent_index,action_counter))
 
             # None is considered as an invalid action.
             if selected is None:
@@ -152,13 +156,19 @@ class Game:
             random.seed(self.seed_list[self.seed_idx])
             self.seed_idx += 1
 
+            # add for updating deep q agent
+            agent.update_model(self.game_rule.current_game_state)
+            ############
+
             if self.displayer is not None:
                 self.displayer.ExcuteAction(agent_index,selected, self.game_rule.current_game_state)
 
             if self.warnings[agent_index] == self.warning_limit:
                 history = self._EndGame(self.game_rule.num_of_agent,history,isTimeOut=True,id=agent_index)
                 return history
-                
+        
+        for agent in self.agents:
+            agent.save_net()
         # Score agent bonuses
         return self._EndGame(self.game_rule.num_of_agent,history,isTimeOut=False)
             
