@@ -24,6 +24,9 @@ for row in range(10):
     for col in range(10):
         COORDS[BOARD[row][col]].append((row,col))
 
+# class written for storing training examples
+# if overflow, new ones replace the old ones
+# First in First out
 class ReplayMemory(object):
     """docstring for ReplayMemory"""
     def __init__(self, size):
@@ -40,23 +43,28 @@ class ReplayMemory(object):
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
-        
+
 class Net(nn.Module):
     def __init__(self, _id):
         super(Net, self).__init__()
+
+        # the neural network structure
         self.network = nn.Sequential(
             nn.Linear(100, 50),
             nn.Linear(50, 1)
         )
+
+        # if start from 0, comment below out
         self.load(_id)
+        #########################################
+
         self.criterion = nn.MSELoss()
         self.opti = optim.Adam(self.network.parameters(), lr = 2e-5)
         
 
     def forward(self, state, opp_colour):
         input = self.to_numbers(state, opp_colour)
-        # input_t = torch.tensor(input).float()
-        # print(input_t.shape)
+
         return self.network(torch.tensor([input]).float())
 
     def train(self, xs, ys, opp_colour):
@@ -71,13 +79,18 @@ class Net(nn.Module):
         loss.backward()
         self.opti.step()
 
-    
+    # save parameters
     def save(self, id):
         torch.save(self.state_dict(), 'agent_{}.dat'.format(id))
 
+    # load parameters
     def load(self, id):
         self.load_state_dict(torch.load('agent_{}.dat'.format(id)))
 
+    # convert colour symbols to numbers
+    # self_colour and jokers -> 1
+    # empty -> 0
+    # opp_clour -> -1
     def to_numbers(self, state, opp_colour):
         output = []
         for col in state:
@@ -93,6 +106,10 @@ class Net(nn.Module):
 
         return output
 
+    # generate all possible future states
+    # empty -> self_colour
+    # opp -> empty
+    # return the one with the highest q-value
     def get_future_max(self, state, opp_colour):
         state = self.to_numbers(state, opp_colour)
 
@@ -105,20 +122,21 @@ class Net(nn.Module):
             if state[i] == 0:
                 state_copy[i] = 1
             successors.append(state_copy)
-        
 
         successors.sort(key=lambda s: self.network(torch.tensor([s]).float()), reverse = True)
-
-        
         return self.network( torch.tensor([successors[0]]).float())
 
 
 class myAgent(Agent):
     def __init__(self, _id):
         super().__init__(_id)
+        # the neural network evaluating chips returns a q-value for this state
         self.policy_net = Net(_id)
 
+        # replay memory storing the (state, reward) pairs
         self.memory = ReplayMemory(32)
+
+        # start training at NO.32 move 
         self.batch_size = 8
 
         self.alpha = 0.2
@@ -126,33 +144,63 @@ class myAgent(Agent):
 
     def SelectAction(self, actions, game_state):
         self.last_score = game_state.agents[self.id].score
+        self.colour = game_state.agents[self.id].colour
         self.opp_colour = game_state.agents[self.id].opp_colour
+
+        # exploration vs exploitation for better training result
+        # otherwise, it is a greedy agent
+        # if random.random() < 0.3:
+        #     return random.choice(actions)
+
+
+        # for each action in the action list
+        # find the state with the highest q-value 
         gs_copy = copy.deepcopy(game_state)
-
         best_action = actions[0]
-        best_score = self.policy_net.forward(self.update_state(best_action, gs_copy), self.opp_colour)
 
+        action_state = self.update_action(best_action, gs_copy)
+        # evluating the draft card by generating all possible states 
+        # after playing this draft card
+        best_score = self.policy_net(action_state, self.opp_colour)
+
+        draft_states = self.update_draft(best_action, action_state)
+        best_score +=  max([ self.policy_net(s, self.opp_colour) for s in draft_states])
+        
+        # find the best action
         for a in actions[1:]:
             gs_copy = copy.deepcopy(game_state)
-            score = self.policy_net.forward(self.update_state(a, gs_copy), self.opp_colour)
 
+            action_state = self.update_action(best_action, gs_copy)
+            score = self.policy_net(action_state, self.opp_colour)
+
+            draft_states = self.update_draft(best_action, action_state)
+            score += max([self.policy_net(s, self.opp_colour) for s in draft_states])
+
+            # update if there is a better action
             if score > best_score:
                 score = best_score
                 best_action = a
 
-        # return random.choice(best_action)
+        # return the best action
         return best_action
     
-    
+    # function updates the network
     def update_model(self, game_state):
         
+        # derive the old_q
         old_q = self.policy_net(game_state.board.chips, self.opp_colour)
+        # reward is the score difference of before and action
         reward = game_state.agents[self.id].score - self.last_score
+        # find future maximum in the successors of the resulting state
         future_max = self.policy_net.get_future_max(game_state.board.chips, self.opp_colour)
+
+        # q-learning formula
         score = old_q + self.alpha * (reward + self.gemma * future_max - old_q)
 
+        # push it to the replaymemory
         self.memory.push(game_state.board.chips, score)
 
+        # check if there are enough training examples
         if len(self.memory.memory) >= self.batch_size:
             batch = self.memory.sample(self.batch_size)
 
@@ -160,8 +208,8 @@ class myAgent(Agent):
 
             self.policy_net.train(xs, ys, self.opp_colour)
 
-    def update_state(self, action, gs):
-        agent = gs.agents[self.id]
+    # function returns the chips of the resulting state after the action
+    def update_action(self, action, gs):
         chips = gs.board.chips
 
         if action['type'] == 'trade':
@@ -169,13 +217,52 @@ class myAgent(Agent):
 
         r,c = action['coords']
         if action['type']=='place':
-            chips[r][c] = agent.colour
+            chips[r][c] = self.colour
             
         elif action['type']=='remove':
             chips[r][c] = '_'
 
         return chips
+    
+    # function finds all possible states after playing the draft card in the action
+    def update_draft(self, action, chips):
+        possible_states = []
 
+        if action['draft_card'] == None:
+            possible_states.append(chips)
+            return possible_states
+        
+        draft_card = action['draft_card']
+
+        if draft_card in COORDS:
+            for r, c in COORDS[draft_card]:
+                chips_copy = copy.deepcopy(chips)
+                if chips[r][c] == '_':
+                    chips_copy[r][c] = self.colour
+                    possible_states.append(chips_copy)
+
+        elif draft_card in ['jd','jc']: #two-eyed jacks
+            for r in range(10):
+                for c in range(10):
+                    if chips[r][c]=='_':
+                        chips_copy = copy.deepcopy(chips)
+                        chips_copy[r][c] = self.colour
+                        possible_states.append(chips_copy)
+        
+        elif draft_card in ['jh','js']: #one-eyed jacks
+            for r in range(10):
+                for c in range(10):
+                    if chips[r][c]==self.opp_colour:
+                        chips_copy = copy.deepcopy(chips)
+                        chips_copy[r][c] = '_'
+                        possible_states.append(chips_copy)
+
+        if len(possible_states) == 0:
+            possible_states.append(chips)
+            return possible_states
+        return possible_states
+
+    # helper function makes x_batch and y_batch
     def make_x_y(self, batch):
         xs = []
         ys = []
