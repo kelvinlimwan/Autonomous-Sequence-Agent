@@ -32,8 +32,24 @@ class myAgent(Agent):
         super().__init__(_id)
     
     def SelectAction(self,actions,game_state):
-        actions.sort(key=lambda a: self.evaluate_action(a, game_state))
-        return actions[0]
+
+        best_action = actions[0]
+        best_reward, best_h_value = self.evaluate_action(best_action, game_state)
+
+        for a in actions[1:]:
+            reward, h_value = self.evaluate_action(a, game_state)
+            if reward > best_reward:
+                best_action = a
+                best_reward = reward
+                best_h_value = h_value
+                continue
+            if reward == best_reward and h_value < best_h_value:
+                best_action = a
+                best_reward = reward
+                best_h_value = h_value
+                continue
+        
+        return best_action
     
     def evaluate_action(self, action, gs):
         self_colour = gs.agents[self.id].colour
@@ -47,16 +63,14 @@ class myAgent(Agent):
             chips[r][c] = self_colour
             draft_card = action['draft_card']
 
-            score = (self.evaluate_state(chips, self_colour, opp_colour) + 
-            self.evaluate_draft(chips, draft_card, self_colour, opp_colour))
+            score = self.evaluate_draft(chips, draft_card, self_colour, opp_colour)
 
         if action['type'] == 'remove':
             r, c = action['coords']
             chips[r][c] = '_'
 
             draft_card = action['draft_card']
-            score = (self.evaluate_state(chips, self_colour, opp_colour) + 
-            self.evaluate_draft(chips, draft_card, self_colour, opp_colour))
+            score = self.evaluate_draft(chips, draft_card, self_colour, opp_colour)
         
 
         if action['type'] == 'trade':
@@ -64,26 +78,39 @@ class myAgent(Agent):
                 score = self.evaluate_state(chips, self_colour, opp_colour)
             else:
                 draft_card = action['draft_card']
-                score = (self.evaluate_state(chips, self_colour, opp_colour) + 
-                self.evaluate_draft(chips, draft_card, self_colour, opp_colour))
+                score = self.evaluate_draft(chips, draft_card, self_colour, opp_colour)
         
         return score
 
     def evaluate_draft(self, chips, card, self_colour, opp_colour):
-        self_play = []
+        results = []
 
         for r,c in COORDS[card]:
             if chips[r][c]=='_':
                 chips[r][c] = self_colour
-            self_play.append(self.evaluate_state(chips, self_colour, opp_colour))
+            results.append(self.evaluate_state(chips, self_colour, opp_colour))
         
-        if len(self_play) == 0:
-            return 0
-        else:
-            return min(self_play)
+        if len(results) == 0:
+            return self.evaluate_state(chips, self_colour, opp_colour)
+        
+        best_reward, best_h_value = results[0]
+        for reward, h_value in results[1:]:
+            if reward > best_reward:
+                best_reward = reward
+                best_h_value = h_value
+                continue
+            if reward == best_reward and h_value < best_h_value:
+                best_reward = reward
+                best_h_value = h_value
+                continue
+        
+        return best_reward, best_h_value
     
     def evaluate_state(self,chips, self_colour, opp_colour):
-        return self.heuristic(chips, opp_colour) - self.heuristic(chips, self_colour)
+        self_reward, self_h = self.heuristic(chips, opp_colour)
+
+        opp_reward, opp_h =  self.heuristic(chips, self_colour)
+        return  self_reward - opp_reward, self_h - opp_h
 
 
     def heuristic(self, chips, opp_colour):
@@ -99,11 +126,11 @@ class myAgent(Agent):
 
         step_to_occupt_heart = self.to_occupy_heart(chips, opp_colour)
         if step_to_occupt_heart == None: # impossible to occupy heart
-            return step_to_win + mean_step_to_complete - num_complete_seq
+            return num_complete_seq, step_to_win + mean_step_to_complete
         elif step_to_occupt_heart == 0:
-            return min(step_to_occupt_heart*0.667, step_to_win) + mean_step_to_complete - num_complete_seq - 3
+            return 3 + num_complete_seq, mean_step_to_complete
         else:
-            return min(step_to_occupt_heart*0.667, step_to_win) + mean_step_to_complete - num_complete_seq
+            return num_complete_seq, min(step_to_occupt_heart, step_to_win) + mean_step_to_complete
  
 
     def to_occupy_heart(self, chips, opp_coulor):

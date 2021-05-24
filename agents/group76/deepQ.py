@@ -51,7 +51,9 @@ class Net(nn.Module):
         # the neural network structure
         self.network = nn.Sequential(
             nn.Linear(100, 50),
-            nn.Linear(50, 1)
+            nn.Linear(50, 25),
+            nn.Linear(25, 1),
+
         )
 
         # if start from 0, comment below out
@@ -61,6 +63,7 @@ class Net(nn.Module):
         self.criterion = nn.MSELoss()
         self.opti = optim.Adam(self.network.parameters(), lr = 2e-5)
         
+
 
     def forward(self, state, opp_colour):
         input = self.to_numbers(state, opp_colour)
@@ -139,7 +142,7 @@ class myAgent(Agent):
         # start training at NO.32 move 
         self.batch_size = 8
 
-        self.alpha = 0.2
+        self.alpha = 0.1
         self.gemma = 0.9
 
     def SelectAction(self, actions, game_state):
@@ -161,20 +164,20 @@ class myAgent(Agent):
         action_state = self.update_action(best_action, gs_copy)
         # evluating the draft card by generating all possible states 
         # after playing this draft card
-        best_score = self.policy_net(action_state, self.opp_colour)
+        # best_score = self.policy_net(action_state, self.opp_colour)
 
         draft_states = self.update_draft(best_action, action_state)
-        best_score +=  max([ self.policy_net(s, self.opp_colour) for s in draft_states])
+        best_score =  max([self.policy_net(s, self.opp_colour) for s in draft_states])
         
         # find the best action
         for a in actions[1:]:
             gs_copy = copy.deepcopy(game_state)
 
             action_state = self.update_action(best_action, gs_copy)
-            score = self.policy_net(action_state, self.opp_colour)
+            # score = self.policy_net(action_state, self.opp_colour)
 
             draft_states = self.update_draft(best_action, action_state)
-            score += max([self.policy_net(s, self.opp_colour) for s in draft_states])
+            score = max([self.policy_net(s, self.opp_colour) for s in draft_states]) 
 
             # update if there is a better action
             if score > best_score:
