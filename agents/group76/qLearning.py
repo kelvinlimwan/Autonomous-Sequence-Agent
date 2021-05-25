@@ -10,8 +10,7 @@ EMPTY = '_'
 RED = 'r'
 BLU = 'b'
 ALPHA = 0.4
-GAMMA  = 0.9
-EPSILON = 0.05
+GAMMA = 0.9
 
 HEART_COORDS = [(4,4),(4,5),(5,4),(5,5)]
 
@@ -53,7 +52,6 @@ class myAgent(Agent):
         self.qValues = {}
         self.alpha = ALPHA
         self.gamma = GAMMA
-        self.epsilon = EPSILON
 
     def SelectAction(self, actions, game_state):
         '''
