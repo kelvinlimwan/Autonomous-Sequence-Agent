@@ -6,21 +6,14 @@ from collections import defaultdict
 TRADE = 'trade'
 PLACE = 'place'
 REMOVE = 'remove'
-JOKER   = '#'
 EMPTY = '_'
-TRADSEQ = 1
-HOTBSEQ = 2
-MULTSEQ = 3
-TIMEOUT = 1
+RED = 'r'
+BLU = 'b'
 ALPHA = 0.4
 GAMMA  = 0.9
 EPSILON = 0.05
 
 HEART_COORDS = [(4,4),(4,5),(5,4),(5,5)]
-VERTICAL_COORDS = [(-4,0),(-3,0),(-2,0),(-1,0),(0,0),(1,0),(2,0),(3,0),(4,0)]
-HORIZONTAL_COORDS = [(0,-4),(0,-3),(0,-2),(0,-1),(0,0),(0,1),(0,2),(0,3),(0,4)]
-DIAGONAL1_COORDS = [(-4,-4),(-3,-3),(-2,-2),(-1,-1),(0,0),(1,1),(2,2),(3,3),(4,4)]
-DIAGONAL2_COORDS = [(-4,4),(-3,3),(-2,2),(-1,1),(0,0),(1,-1),(2,-2),(3,-3),(4,-4)]
 
 BOARD = [['jk','2s','3s','4s','5s','6s','7s','8s','9s','jk'],
          ['6c','5c','4c','3c','2c','ah','kh','qh','th','ts'],
@@ -36,7 +29,7 @@ BOARD = [['jk','2s','3s','4s','5s','6s','7s','8s','9s','jk'],
 CARDS = ['as', 'ah', 'ac', 'ad', '2s', '2h', '2c', '2d', '3s', '3h', '3c', '3d', '4s', '4h', '4c', '4d',
          '5s', '5h', '5c', '5d', '6s', '6h', '6c', '6d', '7s', '7h', '7c', '7d', '8s', '8h', '8c', '8d',
          '9s', '9h', '9c', '9d', 'ts', 'th', 'tc', 'td', 'js', 'jh', 'jc', 'jd', 'qs', 'qh', 'qc', 'qd',
-         'ks', 'kh', 'kc', 'kd', ]
+         'ks', 'kh', 'kc', 'kd']
 
 #Store dict of cards and their coordinates for fast lookup.
 COORDS = defaultdict(list)
@@ -44,11 +37,19 @@ for row in range(10):
     for col in range(10):
         COORDS[BOARD[row][col]].append((row,col))
 
+class State:
+    def __init__(self, chips, hand, draft):
+        self.chips = chips
+        self.hand = hand
+        self.draft = draft
+
 class myAgent(Agent):
 
     def __init__(self, _id):
         super().__init__(_id)
         # self.id = _id
+        self.colour = BLU if _id % 2 else RED
+        self.oppColour = RED if _id % 2 else BLU
         self.qValues = {}
         self.alpha = ALPHA
         self.gamma = GAMMA
@@ -63,17 +64,22 @@ class myAgent(Agent):
         game_state: sequence state object in sequence_model
         '''
 
+        chips = game_state.board.chips
+        hand = game_state.agents[self.id].hand
+        draft = game_state.board.draft
+        state = State(chips, hand, draft)
+
         temp_dict = {}
 
         bestQ = float('-inf')
         bestActions = []
 
         for action in actions:
-            reward = self.getReward(game_state, action)
-            nextState = self.getNextState(dc(game_state), action)
-            newQ = self.update(game_state, action, reward, nextState)
+            reward = self.getReward(state, action)
+            nextState = self.getNextState(state, action)
+            newQ = self.update(state, action, reward, nextState)
             if newQ != 0:
-                temp_dict[(game_state, tuple(action))] = newQ
+                temp_dict[(state, tuple(action))] = newQ
 
             if newQ > bestQ:
                 bestQ = newQ
@@ -98,49 +104,53 @@ class myAgent(Agent):
         '''
         Return reward received by executing action on state
         '''
-
-        copyState = dc(state)
-        chips = copyState.board.chips
-        colour = copyState.agents[self.id].colour
-        oppColour = copyState.agents[self.id].opp_colour
+        copyChips = dc(state.chips)
 
         # All joker spaces become player chips for the purposes of reward allocation.
         for r, c in COORDS['jk']:
-            chips[r][c] = colour
+            copyChips[r][c] = self.colour
 
         if action['type'] == PLACE:
             r, c = action['coords']
 
             # reward of 5 if we place a chip in heart of board
             if (r, c) in HEART_COORDS:
-                return 6
+                return 10
 
             # reward on number of own chips - number of opp chips around (r, c) by 5 rows and columns either sides
             count = 0
-            for row in range(max(0, r-5), min(9, r+5)):
-                for col in range(max(0, c-5), min(9, c+5)):
-                    if chips[row][col] == colour:
+            for row in range(max(0, r - 5), min(9, r + 5)):
+                for col in range(max(0, c - 5), min(9, c + 5)):
+                    if copyChips[row][col] == self.colour:
                         count += 1
-                    elif chips[row][col] == oppColour:
-                        count -= 1
+                    elif copyChips[row][col] == self.oppColour:
+                        count -= 0.5
+
             return count
 
         elif action['type'] == REMOVE:
             r, c = action['coords']
 
-            # reward of 5 if we remove an opp chip in heart of board
+            # reward of 5 if we remove an opp chip in heart of board and there is at least 3 of opp colour in heart
             if (r, c) in HEART_COORDS:
-                return 2
+                heart_count = 0
+                for coord in HEART_COORDS:
+                    for pos in copyChips:
+                        if pos == self.oppColour:
+                            heart_count += 1
+                if heart_count >= 3:
+                    return 10
 
             # reward on number of opp chips - number of own chips around (r, c) by 5 rows and columns either sides
             count = 0
             for row in range(max(0, r - 5), min(9, r + 5)):
                 for col in range(max(0, c - 5), min(9, c + 5)):
-                    if chips[row][col] == colour:
+                    if copyChips[row][col] == self.colour:
                         count -= 1
-                    elif chips[row][col] == oppColour:
-                        count += 1
-            return count/3
+                    elif copyChips[row][col] == self.oppColour:
+                        count += 0.5
+            print("REMOVE REWARD:" + str(count))
+            return count
 
         else:   #action['type'] == TRADE
             # reward of 10 if draft card is wild card
@@ -148,7 +158,6 @@ class myAgent(Agent):
                 return 10
             else:
                 return 0
-
 
     def getQValue(self, state, action):
         '''
@@ -176,181 +185,82 @@ class myAgent(Agent):
         return 0.0
 
     def getNextState(self, state, action):
-        '''
-        Return the state we are at when executing action on state
-        '''
-        nextState = dc(state)
-        nextState.board.new_seq = False
-        #print(f"agent id {self.id}")
-        plr_state = nextState.agents[self.id]
-        plr_state.last_action = action  # Record last action such that other agents can make use of this information.
-        reward = 0
+        nextChips = dc(state.chips)
+        nextHand = dc(state.hand)
+        nextDraft = dc(state.draft)
 
-        # Update agent state. Take the card in play from the agent, discard, draw the selected draft, deal a new draft.
-        # If agent was allowed to trade but chose not to, there is no card played, and hand remains the same.
-        card = action['play_card']
-        draft = action['draft_card']
-        if card:
-            plr_state.hand.remove(card)  # Remove card from hand.
-            plr_state.discard = card  # Add card to discard pile.
-            nextState.deck.discards.append(card)  # Add card to global list of discards (some agents might find tracking this helpful).
-            nextState.board.draft.remove(draft)  # Remove draft from draft selection.
-            plr_state.hand.append(draft)  # Add draft to player hand.
-            nextState.board.draft.extend(choice(CARDS))  # Replenish draft selection.
-
-        # If action was to trade in a dead card, action is complete, and agent gets to play another card.
-        if action['type'] == TRADE:
-            plr_state.trade = True  # Switch trade flag to prohibit agent performing a second trade this turn.
-            return nextState
-
-        # Update Sequence board. If action was to place/remove a marker, add/subtract it from the board.
-        r, c = action['coords']
         if action['type'] == PLACE:
-            nextState.board.chips[r][c] = plr_state.colour
-            nextState.board.empty_coords.remove(action['coords'])
-            nextState.board.plr_coords[plr_state.colour].append(action['coords'])
+            r, c = action['coords']
+            play_card = action['play_card']
+            draft_card = action['draft_card']
+            nextChips[r][c] = self.colour
+            nextHand.remove(play_card)
+            nextHand.append(draft_card)
+            nextDraft.remove(draft_card)
+            nextDraft.append(choice(CARDS)) # add a random card (could be already used)
+
         elif action['type'] == REMOVE:
-            nextState.board.chips[r][c] = EMPTY
-            nextState.board.empty_coords.append(action['coords'])
-        else:
-            print("Action unrecognised.")
+            r, c = action['coords']
+            play_card = action['play_card']
+            draft_card = action['draft_card']
+            nextChips[r][c] = EMPTY
+            nextHand.remove(play_card)
+            nextHand.append(draft_card)
+            nextDraft.remove(draft_card)
+            nextDraft.append(choice(CARDS))  # add a random card (could be already used)
 
-        # Check if a sequence has just been completed. If so, upgrade chips to special sequence chips.
-        if action['type'] == PLACE:
-            seq, seq_type = self.checkSeq(nextState.board.chips, plr_state, (r, c))
-            if seq:
-                reward += seq['num_seq']
-                nextState.board.new_seq = seq_type
-                for sequence in seq['coords']:
-                    for r, c in sequence:
-                        if nextState.board.chips[r][c] != JOKER:  # Joker spaces stay jokers.
-                            nextState.board.chips[r][c] = plr_state.seq_colour
-                            try:
-                                nextState.board.plr_coords[plr_state.colour].remove(action['coords'])
-                            except:  # Chip coords were already removed with the first sequence.
-                                pass
-                plr_state.completed_seqs += seq['num_seq']
-                plr_state.seq_orientations.extend(seq['orientation'])
+        else: # action['type'] == TRADE
+            play_card = action['play_card']
+            draft_card = action['draft_card']
+            if play_card is not None and draft_card is not None:
+                nextHand.remove(play_card)
+                nextHand.append(draft_card)
+                nextDraft.remove(draft_card)
+                nextDraft.append(choice(CARDS))  # add a random card (could be already used)
 
-        plr_state.trade = False  # Reset trade flag if agent has completed a full turn.
-        plr_state.agent_trace.action_reward.append((action, reward))  # Log this turn's action and any resultant score.
-        plr_state.score += reward
-        return nextState
-
-    def checkSeq(self, chips, plr_state, last_coords):
-        clr, sclr = plr_state.colour, plr_state.seq_colour
-        oc, os = plr_state.opp_colour, plr_state.opp_seq_colour
-        seq_type = TRADSEQ
-        seq_coords = []
-        seq_found = {'vr': 0, 'hz': 0, 'd1': 0, 'd2': 0, 'hb': 0}
-        found = False
-        nine_chip = lambda x, clr: len(x) == 9 and len(set(x)) == 1 and clr in x
-        lr, lc = last_coords
-
-        # All joker spaces become player chips for the purposes of sequence checking.
-        for r, c in COORDS['jk']:
-            chips[r][c] = clr
-
-        # First, check "heart of the board" (2h, 3h, 4h, 5h). If possessed by one team, the game is over.
-        coord_list = [(4, 4), (4, 5), (5, 4), (5, 5)]
-        heart_chips = [chips[y][x] for x, y in coord_list]
-        if EMPTY not in heart_chips and (clr in heart_chips or sclr in heart_chips) and not (
-                oc in heart_chips or os in heart_chips):
-            seq_type = HOTBSEQ
-            seq_found['hb'] += 2
-            seq_coords.append(coord_list)
-
-        # Search vertical, horizontal, and both diagonals.
-        vr = [(-4, 0), (-3, 0), (-2, 0), (-1, 0), (0, 0), (1, 0), (2, 0), (3, 0), (4, 0)]
-        hz = [(0, -4), (0, -3), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (0, 3), (0, 4)]
-        d1 = [(-4, -4), (-3, -3), (-2, -2), (-1, -1), (0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
-        d2 = [(-4, 4), (-3, 3), (-2, 2), (-1, 1), (0, 0), (1, -1), (2, -2), (3, -3), (4, -4)]
-        for seq, seq_name in [(vr, 'vr'), (hz, 'hz'), (d1, 'd1'), (d2, 'd2')]:
-            coord_list = [(r + lr, c + lc) for r, c in seq]
-            coord_list = [i for i in coord_list if 0 <= min(i) and 9 >= max(i)]  # Sequences must stay on the board.
-            chip_str = ''.join([chips[r][c] for r, c in coord_list])
-            # Check if there exists 4 player chips either side of new chip (counts as forming 2 sequences).
-            if nine_chip(chip_str, clr):
-                seq_found[seq_name] += 2
-                seq_coords.append(coord_list)
-            # If this potential sequence doesn't overlap an established sequence, do fast check.
-            if sclr not in chip_str:
-                sequence_len = 0
-                start_idx = 0
-                for i in range(len(chip_str)):
-                    if chip_str[i] == clr:
-                        sequence_len += 1
-                    else:
-                        start_idx = i + 1
-                        sequence_len = 0
-                    if sequence_len >= 5:
-                        seq_found[seq_name] += 1
-                        seq_coords.append(coord_list[start_idx:start_idx + 5])
-                        break
-            else:  # Check for sequences of 5 player chips, with a max. 1 chip from an existing sequence.
-                for pattern in [clr * 5, clr * 4 + sclr, clr * 3 + sclr + clr, clr * 2 + sclr + clr * 2,
-                                clr + sclr + clr * 3, sclr + clr * 4]:
-                    for start_idx in range(5):
-                        if chip_str[start_idx:start_idx + 5] == pattern:
-                            seq_found[seq_name] += 1
-                            seq_coords.append(coord_list[start_idx:start_idx + 5])
-                            found = True
-                            break
-                    if found:
-                        break
-
-        for r, c in COORDS['jk']:
-            chips[r][c] = JOKER  # Joker spaces reset after sequence checking.
-
-        num_seq = sum(seq_found.values())
-        if num_seq > 1 and seq_type != HOTBSEQ:
-            seq_type = MULTSEQ
-        return ({'num_seq': num_seq, 'orientation': [k for k, v in seq_found.items() if v], 'coords': seq_coords},
-                seq_type) if num_seq else (None, None)
+        return State(nextChips, nextHand, nextDraft)
 
     def getPossibleActions(self, state):
+        chips = dc(state.chips)
+        hand = dc(state.hand)
+        draft = dc(state.draft)
+
         actions = []
-        agent_state = state.agents[self.id]
 
-        # First, give the agent the option to trade a dead card, if they haven't just done so.
-        if not agent_state.trade:
-            for card in agent_state.hand:
-                if card[0] != 'j':
-                    free_spaces = 0
-                    for r, c in COORDS[card]:
-                        if state.board.chips[r][c] == EMPTY:
-                            free_spaces += 1
-                    if not free_spaces:  # No option to place, so card is considered dead and can be traded.
-                        for draft in state.board.draft:
-                            actions.append({'play_card': card, 'draft_card': draft, 'type': 'trade', 'coords': None})
+        # add trade actions
+        for handCard in hand:
+            if handCard[0] != 'j':  # can't trade a jack
+                freeSpaces = 0  # counts number of free spaces in board for handCard
+                for r,c in COORDS[handCard]:
+                    if chips[r][c] == EMPTY:
+                        freeSpaces += 1
+                if not freeSpaces:  # if handCard has no space in board (dead)
+                    for draftCard in draft:
+                        actions.append({'play_card': handCard, 'draft_card': draftCard, 'type': TRADE, 'coords': None})
+        if len(actions):    # if can trade, give option to forego trade
+            actions.append({'play_card': None, 'draft_card': None, 'type': TRADE, 'coords': None})
 
-            if len(actions):  # If trade actions available, return those, along with the option to forego the trade.
-                actions.append({'play_card': None, 'draft_card': None, 'type': 'trade', 'coords': None})
-                return actions
-
-        # If trade is prohibited, or no trades available, add action/s for each card in player's hand.
-        # For each action, add copies corresponding to the various draft cards that could be selected at end of turn.
-        for card in agent_state.hand:
-            if card in ['jd', 'jc']:  # two-eyed jacks
+        # add play and remove actions
+        for handCard in hand:
+            if handCard in ['jc', 'jd']:  # two-eyed jacks
                 for r in range(10):
                     for c in range(10):
-                        if state.board.chips[r][c] == EMPTY:
-                            for draft in state.board.draft:
-                                actions.append(
-                                    {'play_card': card, 'draft_card': draft, 'type': 'place', 'coords': (r, c)})
+                        if chips[r][c] == EMPTY:
+                            for draftCard in draft:
+                                actions.append({'play_card': handCard, 'draft_card': draftCard, 'type': PLACE, 'coords': (r, c)})
 
-            elif card in ['jh', 'js']:  # one-eyed jacks
+
+            elif handCard in ['js', 'jh']:  # one-eyed jacks
                 for r in range(10):
                     for c in range(10):
-                        if state.board.chips[r][c] == agent_state.opp_colour:
-                            for draft in state.board.draft:
-                                actions.append(
-                                    {'play_card': card, 'draft_card': draft, 'type': 'remove', 'coords': (r, c)})
+                        if chips[r][c] == self.oppColour:
+                            for draftCard in draft:
+                                actions.append({'play_card': handCard, 'draft_card': draftCard, 'type': REMOVE, 'coords': (r, c)})
 
-            else:  # regular cards
-                for r, c in COORDS[card]:
-                    if state.board.chips[r][c] == EMPTY:
-                        for draft in state.board.draft:
-                            actions.append({'play_card': card, 'draft_card': draft, 'type': 'place', 'coords': (r, c)})
+            else: #regular cards
+                for r,c in COORDS[handCard]:
+                    if chips[r][c] == EMPTY:
+                        for draftCard in draft:
+                            actions.append({'play_card': handCard, 'draft_card': draftCard, 'type': PLACE, 'coords':(r,c)})
 
         return actions
