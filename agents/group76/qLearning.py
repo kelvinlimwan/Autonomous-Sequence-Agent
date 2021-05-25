@@ -76,7 +76,8 @@ class myAgent(Agent):
             reward = self.getReward(state, action)
             nextState = self.getNextState(state, action)
             newQ = self.update(state, action, reward, nextState)
-            if newQ != 0:
+
+            if newQ != 0:   # add state-action pair to temp_dict if its Q-value is not equal to zero
                 temp_dict[(state, tuple(action))] = newQ
 
             if newQ > bestQ:
@@ -85,6 +86,7 @@ class myAgent(Agent):
             elif newQ == bestQ:
                 bestActions.append(action)
 
+        # add new Q-values to qValues
         for key, val in temp_dict.items():
             self.qValues[key] = val
 
@@ -92,7 +94,7 @@ class myAgent(Agent):
 
     def update(self, state, action, reward, nextState):
         '''
-        Return an update Q value for (state, action) pair
+        Return an updated Q value for (state, action) pair
         '''
         maxFutureQ = self.computeValueFromQValues(nextState)
 
@@ -104,7 +106,7 @@ class myAgent(Agent):
         '''
         copyChips = dc(state.chips)
 
-        # All joker spaces become player chips for the purposes of reward allocation.
+        # all joker spaces become player chips for the purposes of reward allocation.
         for r, c in COORDS['jk']:
             copyChips[r][c] = self.colour
 
@@ -183,6 +185,9 @@ class myAgent(Agent):
         return 0.0
 
     def getNextState(self, state, action):
+        '''
+        Return the next state from executing action on state
+        '''
         nextChips = dc(state.chips)
         nextHand = dc(state.hand)
         nextDraft = dc(state.draft)
@@ -219,6 +224,9 @@ class myAgent(Agent):
         return State(nextChips, nextHand, nextDraft)
 
     def getPossibleActions(self, state):
+        '''
+        Return all possible actions from state
+        '''
         chips = dc(state.chips)
         hand = dc(state.hand)
         draft = dc(state.draft)
