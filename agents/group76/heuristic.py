@@ -31,6 +31,8 @@ class myAgent(Agent):
     def __init__(self,_id):
         super().__init__(_id)
     
+    # function returns the action leading to the state with 
+    # the best reward and the best heuristic value
     def SelectAction(self,actions,game_state):
 
         best_action = actions[0]
@@ -51,6 +53,8 @@ class myAgent(Agent):
         
         return best_action
     
+    # function update the play_card and draft card on game states
+    # returns a list of possible states
     def evaluate_action(self, action, gs):
         self_colour = gs.agents[self.id].colour
         opp_colour = gs.agents[self.id].opp_colour
@@ -82,6 +86,8 @@ class myAgent(Agent):
         
         return score
 
+    # function first populate all successors 
+    # then returns the one with the highest reward and h_value
     def evaluate_draft(self, chips, card, self_colour, opp_colour):
         results = []
 
@@ -106,13 +112,15 @@ class myAgent(Agent):
         
         return best_reward, best_h_value
     
+    # evaluate the state from a comparative advantage perspective
     def evaluate_state(self,chips, self_colour, opp_colour):
         self_reward, self_h = self.heuristic(chips, opp_colour)
 
         opp_reward, opp_h =  self.heuristic(chips, self_colour)
         return  self_reward - opp_reward, self_h - opp_h
 
-
+    # functions returns the reward and the heuristic value for
+    # a given state from a givem player point of view
     def heuristic(self, chips, opp_colour):
         lines = self.create_lines(chips)
         seq_candidates = self.create_sequence_candidates(lines, opp_colour)
@@ -132,7 +140,7 @@ class myAgent(Agent):
         else:
             return num_complete_seq, min(step_to_occupt_heart, step_to_win) + mean_step_to_complete
  
-
+    # function returns the number of steps to occupy the board heart
     def to_occupy_heart(self, chips, opp_coulor):
         heart = [chips[4][4], chips[4][5], chips[5][4], chips[5][5]]
         if opp_coulor in heart:
@@ -140,6 +148,7 @@ class myAgent(Agent):
         
         return self.num_space(heart)
 
+    # function returns the number of steps to complete a sequence
     def to_complete_seq(self, seq_candidate):
         step = 5
         for i in range(len(seq_candidate) - 4):
@@ -149,6 +158,7 @@ class myAgent(Agent):
                 step = self.num_space(five_chips)
         return step
 
+    # count the numebr of EMPTY in a sequence candidate
     def num_space(self, seq):
         num_space = 0
         for i in seq:
@@ -156,7 +166,8 @@ class myAgent(Agent):
                 num_space += 1
         return num_space
 
-
+    # function generates each horizontal line, vertical line
+    # each diagonal line in the given chips
     def create_lines(self, chips):
         chips = np.asarray(chips)
         lines = []
@@ -189,6 +200,7 @@ class myAgent(Agent):
                 lines.append(temp)
         return lines
     
+    # function finds all sequence candidate in the lines of the board
     def create_sequence_candidates(self, lines, opp_colour):
         candidates = []
 
