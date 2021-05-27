@@ -1,272 +1,225 @@
 from template import Agent
-from copy import deepcopy as dc
-from random import choice
+import random
+import numpy as np
+import copy
+
+from Sequence.sequence_model import SequenceGameRule as GameRule
+
 from collections import defaultdict
 
-TRADE = 'trade'
-PLACE = 'place'
-REMOVE = 'remove'
-EMPTY = '_'
-RED = 'r'
-BLU = 'b'
-ALPHA = 0.4
-GAMMA = 0.9
+# CONSTANTS ----------------------------------------------------------------------------------------------------------#
 
-HEART_COORDS = [(4,4),(4,5),(5,4),(5,5)]
+BOARD = [['jk', '2s', '3s', '4s', '5s', '6s', '7s', '8s', '9s', 'jk'],
+         ['6c', '5c', '4c', '3c', '2c', 'ah', 'kh', 'qh', 'th', 'ts'],
+         ['7c', 'as', '2d', '3d', '4d', '5d', '6d', '7d', '9h', 'qs'],
+         ['8c', 'ks', '6c', '5c', '4c', '3c', '2c', '8d', '8h', 'ks'],
+         ['9c', 'qs', '7c', '6h', '5h', '4h', 'ah', '9d', '7h', 'as'],
+         ['tc', 'ts', '8c', '7h', '2h', '3h', 'kh', 'td', '6h', '2d'],
+         ['qc', '9s', '9c', '8h', '9h', 'th', 'qh', 'qd', '5h', '3d'],
+         ['kc', '8s', 'tc', 'qc', 'kc', 'ac', 'ad', 'kd', '4h', '4d'],
+         ['ac', '7s', '6s', '5s', '4s', '3s', '2s', '2h', '3h', '5d'],
+         ['jk', 'ad', 'kd', 'qd', 'td', '9d', '8d', '7d', '6d', 'jk']]
 
-BOARD = [['jk','2s','3s','4s','5s','6s','7s','8s','9s','jk'],
-         ['6c','5c','4c','3c','2c','ah','kh','qh','th','ts'],
-         ['7c','as','2d','3d','4d','5d','6d','7d','9h','qs'],
-         ['8c','ks','6c','5c','4c','3c','2c','8d','8h','ks'],
-         ['9c','qs','7c','6h','5h','4h','ah','9d','7h','as'],
-         ['tc','ts','8c','7h','2h','3h','kh','td','6h','2d'],
-         ['qc','9s','9c','8h','9h','th','qh','qd','5h','3d'],
-         ['kc','8s','tc','qc','kc','ac','ad','kd','4h','4d'],
-         ['ac','7s','6s','5s','4s','3s','2s','2h','3h','5d'],
-         ['jk','ad','kd','qd','td','9d','8d','7d','6d','jk']]
-
-CARDS = ['as', 'ah', 'ac', 'ad', '2s', '2h', '2c', '2d', '3s', '3h', '3c', '3d', '4s', '4h', '4c', '4d',
-         '5s', '5h', '5c', '5d', '6s', '6h', '6c', '6d', '7s', '7h', '7c', '7d', '8s', '8h', '8c', '8d',
-         '9s', '9h', '9c', '9d', 'ts', 'th', 'tc', 'td', 'js', 'jh', 'jc', 'jd', 'qs', 'qh', 'qc', 'qd',
-         'ks', 'kh', 'kc', 'kd']
-
-#Store dict of cards and their coordinates for fast lookup.
+# Store dict of cards and their coordinates for fast lookup.
 COORDS = defaultdict(list)
 for row in range(10):
     for col in range(10):
-        COORDS[BOARD[row][col]].append((row,col))
+        COORDS[BOARD[row][col]].append((row, col))
 
-class State:
-    def __init__(self, chips, hand, draft):
-        self.chips = chips
-        self.hand = hand
-        self.draft = draft
 
 class myAgent(Agent):
-
     def __init__(self, _id):
         super().__init__(_id)
-        # self.id = _id
-        self.colour = BLU if _id % 2 else RED
-        self.oppColour = RED if _id % 2 else BLU
-        self.qValues = {}
-        self.alpha = ALPHA
-        self.gamma = GAMMA
 
+    # function returns the action leading to the state with
+    # the best reward and the best heuristic value
     def SelectAction(self, actions, game_state):
-        '''
-        Given a set of available actions for the agent to execute, and
-        a copy of the current game state (including that of the agent),
-        select one of the actions to execute.
-        actions: actions that you are allowed to take this round- list of dictionaries
-        game_state: sequence state object in sequence_model
-        '''
 
-        chips = game_state.board.chips
-        hand = game_state.agents[self.id].hand
-        draft = game_state.board.draft
-        state = State(chips, hand, draft)
+        best_action = actions[0]
+        best_reward, best_h_value = self.evaluate_action(best_action, game_state)
 
-        temp_dict = {}
+        for a in actions[1:]:
+            reward, h_value = self.evaluate_action(a, game_state)
+            if reward > best_reward:
+                best_action = a
+                best_reward = reward
+                best_h_value = h_value
+                continue
+            if reward == best_reward and h_value < best_h_value:
+                best_action = a
+                best_reward = reward
+                best_h_value = h_value
+                continue
 
-        bestQ = float('-inf')
-        bestActions = []
+        return best_action
 
-        for action in actions:
-            reward = self.getReward(state, action)
-            nextState = self.getNextState(state, action)
-            newQ = self.update(state, action, reward, nextState)
+    # function update the play_card and draft card on game states
+    # returns a list of possible states
+    def evaluate_action(self, action, gs):
+        self_colour = gs.agents[self.id].colour
+        opp_colour = gs.agents[self.id].opp_colour
 
-            if newQ != 0:   # add state-action pair to temp_dict if its Q-value is not equal to zero
-                temp_dict[(state, tuple(action))] = newQ
+        s0 = copy.deepcopy(gs)
+        chips = s0.board.chips
 
-            if newQ > bestQ:
-                bestQ = newQ
-                bestActions = [action]
-            elif newQ == bestQ:
-                bestActions.append(action)
-
-        # add new Q-values to qValues
-        for key, val in temp_dict.items():
-            self.qValues[key] = val
-
-        return choice(bestActions)
-
-    def update(self, state, action, reward, nextState):
-        '''
-        Return an updated Q value for (state, action) pair
-        '''
-        maxFutureQ = self.computeValueFromQValues(nextState)
-
-        return self.getQValue(state, action) + self.alpha * (reward + self.gamma * maxFutureQ - self.getQValue(state, action))
-
-    def getReward(self, state, action):
-        '''
-        Return reward received by executing action on state
-        '''
-        copyChips = dc(state.chips)
-
-        # all joker spaces become player chips for the purposes of reward allocation.
-        for r, c in COORDS['jk']:
-            copyChips[r][c] = self.colour
-
-        if action['type'] == PLACE:
+        if action['type'] == 'place':
             r, c = action['coords']
+            chips[r][c] = self_colour
+            draft_card = action['draft_card']
 
-            # reward of 5 if we place a chip in heart of board
-            if (r, c) in HEART_COORDS:
-                return 10
+            score = self.evaluate_draft(chips, draft_card, self_colour, opp_colour)
 
-            # reward on number of own chips - number of opp chips around (r, c) by 5 rows and columns either sides
-            count = 0
-            for row in range(max(0, r - 5), min(9, r + 5)):
-                for col in range(max(0, c - 5), min(9, c + 5)):
-                    if copyChips[row][col] == self.colour:
-                        count += 1
-                    elif copyChips[row][col] == self.oppColour:
-                        count -= 0.5
-
-            return count
-
-        elif action['type'] == REMOVE:
+        if action['type'] == 'remove':
             r, c = action['coords']
+            chips[r][c] = '_'
 
-            # reward of 5 if we remove an opp chip in heart of board and there is at least 3 of opp colour in heart
-            if (r, c) in HEART_COORDS:
-                heart_count = 0
-                for coord in HEART_COORDS:
-                    for pos in copyChips:
-                        if pos == self.oppColour:
-                            heart_count += 1
-                if heart_count >= 3:
-                    return 10
+            draft_card = action['draft_card']
+            score = self.evaluate_draft(chips, draft_card, self_colour, opp_colour)
 
-            # reward on number of opp chips - number of own chips around (r, c) by 5 rows and columns either sides
-            count = 0
-            for row in range(max(0, r - 5), min(9, r + 5)):
-                for col in range(max(0, c - 5), min(9, c + 5)):
-                    if copyChips[row][col] == self.colour:
-                        count -= 1
-                    elif copyChips[row][col] == self.oppColour:
-                        count += 0.5
-            print("REMOVE REWARD:" + str(count))
-            return count
-
-        else:   #action['type'] == TRADE
-            # reward of 10 if draft card is wild card
-            if action['draft_card'] is not None and action['draft_card'][0] == 'j':
-                return 10
+        if action['type'] == 'trade':
+            if action['play_card'] == None:
+                score = self.evaluate_state(chips, self_colour, opp_colour)
             else:
-                return 0
+                draft_card = action['draft_card']
+                score = self.evaluate_draft(chips, draft_card, self_colour, opp_colour)
 
-    def getQValue(self, state, action):
-        '''
-        Return the qValue of the (state, action) pair
-        '''
-        if (state, tuple(action)) in self.qValues:
-            return self.qValues[(state, tuple(action))]
+        return score
+
+    # function first populate all successors
+    # then returns the one with the highest reward and h_value
+    def evaluate_draft(self, chips, card, self_colour, opp_colour):
+        results = []
+
+        for r, c in COORDS[card]:
+            if chips[r][c] == '_':
+                chips[r][c] = self_colour
+            results.append(self.evaluate_state(chips, self_colour, opp_colour))
+
+        if len(results) == 0:
+            return self.evaluate_state(chips, self_colour, opp_colour)
+
+        best_reward, best_h_value = results[0]
+        for reward, h_value in results[1:]:
+            if reward > best_reward:
+                best_reward = reward
+                best_h_value = h_value
+                continue
+            if reward == best_reward and h_value < best_h_value:
+                best_reward = reward
+                best_h_value = h_value
+                continue
+
+        return best_reward, best_h_value
+
+    # evaluate the state from a comparative advantage perspective
+    def evaluate_state(self, chips, self_colour, opp_colour):
+        self_reward, self_h = self.heuristic(chips, opp_colour)
+
+        opp_reward, opp_h = self.heuristic(chips, self_colour)
+        return self_reward - opp_reward, self_h - opp_h
+
+    # functions returns the reward and the heuristic value for
+    # a given state from a givem player point of view
+    def heuristic(self, chips, opp_colour):
+        lines = self.create_lines(chips)
+        seq_candidates = self.create_sequence_candidates(lines, opp_colour)
+
+        steps_to_complete = [self.to_complete_seq(i) for i in seq_candidates]
+        steps_to_complete.sort()
+        step_to_win = steps_to_complete[0] + steps_to_complete[1]
+
+        num_complete_seq = sum([int(i == 0) for i in steps_to_complete])
+        mean_step_to_complete = sum(steps_to_complete) / len(steps_to_complete)
+
+        step_to_occupt_heart = self.to_occupy_heart(chips, opp_colour)
+        if step_to_occupt_heart == None:  # impossible to occupy heart
+            return num_complete_seq, step_to_win + mean_step_to_complete
+        elif step_to_occupt_heart == 0:
+            return 3 + num_complete_seq, mean_step_to_complete
         else:
-            return 0
+            return num_complete_seq, min(step_to_occupt_heart, step_to_win) + mean_step_to_complete
 
-    def computeValueFromQValues(self, state):
-        '''
-          Returns max_action Q(state,action)
-          where the max is over legal actions.  Note that if
-          there are no legal actions, which is the case at the
-          terminal state, you should return a value of 0.0.
-        '''
-        possibleActions = self.getPossibleActions(state)
-        if possibleActions:
-            maxQ = float('-inf')
-            for action in possibleActions:
-                q = self.getQValue(state, action)
-                maxQ = max(maxQ, q)
-            return maxQ
-        return 0.0
+    # function returns the number of steps to occupy the board heart
+    def to_occupy_heart(self, chips, opp_coulor):
+        heart = [chips[4][4], chips[4][5], chips[5][4], chips[5][5]]
+        if opp_coulor in heart:
+            return None
 
-    def getNextState(self, state, action):
-        '''
-        Return the next state from executing action on state
-        '''
-        nextChips = dc(state.chips)
-        nextHand = dc(state.hand)
-        nextDraft = dc(state.draft)
+        return self.num_space(heart)
 
-        if action['type'] == PLACE:
-            r, c = action['coords']
-            play_card = action['play_card']
-            draft_card = action['draft_card']
-            nextChips[r][c] = self.colour
-            nextHand.remove(play_card)
-            nextHand.append(draft_card)
-            nextDraft.remove(draft_card)
-            nextDraft.append(choice(CARDS)) # add a random card (could be already used)
+    # function returns the number of steps to complete a sequence
+    def to_complete_seq(self, seq_candidate):
+        step = 5
+        for i in range(len(seq_candidate) - 4):
+            five_chips = seq_candidate[i:i + 5]
 
-        elif action['type'] == REMOVE:
-            r, c = action['coords']
-            play_card = action['play_card']
-            draft_card = action['draft_card']
-            nextChips[r][c] = EMPTY
-            nextHand.remove(play_card)
-            nextHand.append(draft_card)
-            nextDraft.remove(draft_card)
-            nextDraft.append(choice(CARDS))  # add a random card (could be already used)
+            if self.num_space(five_chips) < step:
+                step = self.num_space(five_chips)
+        return step
 
-        else: # action['type'] == TRADE
-            play_card = action['play_card']
-            draft_card = action['draft_card']
-            if play_card is not None and draft_card is not None:
-                nextHand.remove(play_card)
-                nextHand.append(draft_card)
-                nextDraft.remove(draft_card)
-                nextDraft.append(choice(CARDS))  # add a random card (could be already used)
+    # count the numebr of EMPTY in a sequence candidate
+    def num_space(self, seq):
+        num_space = 0
+        for i in seq:
+            if i == '_':
+                num_space += 1
+        return num_space
 
-        return State(nextChips, nextHand, nextDraft)
+    # function generates each horizontal line, vertical line
+    # each diagonal line in the given chips
+    def create_lines(self, chips):
+        chips = np.asarray(chips)
+        lines = []
 
-    def getPossibleActions(self, state):
-        '''
-        Return all possible actions from state
-        '''
-        chips = dc(state.chips)
-        hand = dc(state.hand)
-        draft = dc(state.draft)
+        for i in chips:
+            lines.append(i)
 
-        actions = []
+        for i in np.transpose(chips):
+            lines.append(i)
 
-        # add trade actions
-        for handCard in hand:
-            if handCard[0] != 'j':  # can't trade a jack
-                freeSpaces = 0  # counts number of free spaces in board for handCard
-                for r,c in COORDS[handCard]:
-                    if chips[r][c] == EMPTY:
-                        freeSpaces += 1
-                if not freeSpaces:  # if handCard has no space in board (dead)
-                    for draftCard in draft:
-                        actions.append({'play_card': handCard, 'draft_card': draftCard, 'type': TRADE, 'coords': None})
-        if len(actions):    # if can trade, give option to forego trade
-            actions.append({'play_card': None, 'draft_card': None, 'type': TRADE, 'coords': None})
+        d1 = [(0, i) for i in range(10)] + [(i, 0) for i in range(10)]
+        d2 = [(9, i) for i in range(10)] + [(i, 0) for i in range(10)]
 
-        # add play and remove actions
-        for handCard in hand:
-            if handCard in ['jc', 'jd']:  # two-eyed jacks
-                for r in range(10):
-                    for c in range(10):
-                        if chips[r][c] == EMPTY:
-                            for draftCard in draft:
-                                actions.append({'play_card': handCard, 'draft_card': draftCard, 'type': PLACE, 'coords': (r, c)})
+        for (x, y) in d1:
+            temp = []
+            while (x < 10 and y < 10):
+                temp.append(chips[y][x])
+                x += 1
+                y += 1
+            if len(temp) >= 5:
+                lines.append(temp)
 
+        for (x, y) in d2:
+            temp = []
+            while (x < 10 and y < 10):
+                temp.append(chips[y][x])
+                x += 1
+                y -= 1
+            if len(temp) >= 5:
+                lines.append(temp)
+        return lines
 
-            elif handCard in ['js', 'jh']:  # one-eyed jacks
-                for r in range(10):
-                    for c in range(10):
-                        if chips[r][c] == self.oppColour:
-                            for draftCard in draft:
-                                actions.append({'play_card': handCard, 'draft_card': draftCard, 'type': REMOVE, 'coords': (r, c)})
+    # function finds all sequence candidate in the lines of the board
+    def create_sequence_candidates(self, lines, opp_colour):
+        candidates = []
 
-            else: #regular cards
-                for r,c in COORDS[handCard]:
-                    if chips[r][c] == EMPTY:
-                        for draftCard in draft:
-                            actions.append({'play_card': handCard, 'draft_card': draftCard, 'type': PLACE, 'coords':(r,c)})
+        for line in lines:
+            opps = np.where(line == opp_colour)[0]
+            if len(opps) != 0:
+                start = 0
+                for opp_index in opps:
+                    if start == 0:
+                        temp = line[start: opp_index]
+                    else:
+                        temp = line[start + 1: opp_index]
+                    start = opp_index
 
-        return actions
+                    if len(temp) >= 5:
+                        candidates.append(temp)
+                temp = line[start: len(line)]
+                if len(temp) >= 5:
+                    candidates.append(temp)
+            else:
+                candidates.append(line)
+        return candidates
+
